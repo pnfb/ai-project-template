@@ -2,8 +2,6 @@
 
 A starting point for building a product as **one human owner working with Claude Code agents**. It packages a lightweight version of the [AI-native SDLC playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook): the repo is the single source of truth, Claude does the drafting, building and verifying, and the owner approves *what* gets built and *whether it works*, without needing to read code.
 
-It came out of building [Cardopedia](https://cardopedia.org), where it took a project from an empty repo to production across 20+ work items.
-
 ## The ways of working in one page
 
 - **Everything lives in the repo.** Specs, decisions, approvals and status are Markdown files in git. Chat is for talking; anything important gets written down. No ticket system: [`docs/roadmap.md`](docs/roadmap.md) is the backlog.
