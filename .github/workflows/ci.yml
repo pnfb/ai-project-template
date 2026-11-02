@@ -1,0 +1,73 @@
+name: CI
+
+# Starter CI. The foundation work item extends it with build, browser tests, a preview deploy per PR
+# and a production deploy that runs only after every check passes on main.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Works out whether a PR touches code. Document-only PRs (Markdown, docs/, work/) skip the build and
+  # tests. Compared against the PR's base, not the last push, so a docs push can't hide an unchecked
+  # code push whose run was cancelled.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: files
+        env:
+          RANGE: ${{ format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) }}
+        run: |
+          # On main, always run everything.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; echo "Push to main: running everything."; exit 0
+          fi
+          # If the file list can't be worked out (a force-push, a new branch), treat it as code.
+          # --no-renames lists both sides of a move, so moving code into docs/ still counts as code.
+          if ! files="$(git diff --name-only --no-renames "$RANGE")" || [ -z "$files" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; echo "Couldn't list the changed files; running everything."; exit 0
+          fi
+          code=false
+          while IFS= read -r f; do
+            case "$f" in *.md|docs/*|work/*) ;; *) code=true; echo "Code: $f" ;; esac
+          done <<< "$files"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Touches code: $code"
+
+  checks:
+    name: Checks
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Document-only change
+        if: needs.changes.outputs.code != 'true'
+        run: echo "Only documents changed; nothing to build or test."
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.code == 'true'
+        with:
+          node-version: 22
+      - name: Guard hook tests
+        if: needs.changes.outputs.code == 'true'
+        run: bash .claude/hooks/test.sh
+      # Replace with the stack's single "run everything" command (see CLAUDE.md, Commands).
+      - name: Project checks
+        if: needs.changes.outputs.code == 'true' && hashFiles('package.json') != ''
+        run: |
+          npm ci
+          npm run check
