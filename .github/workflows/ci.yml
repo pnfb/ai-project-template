@@ -25,7 +25,7 @@ jobs:
     outputs:
       code: ${{ steps.files.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: files
@@ -56,9 +56,9 @@ jobs:
       - name: Document-only change
         if: needs.changes.outputs.code != 'true'
         run: echo "Only documents changed; nothing to build or test."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: needs.changes.outputs.code == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: needs.changes.outputs.code == 'true'
         with:
           node-version: 22
