@@ -3,8 +3,12 @@
 set -u
 cd "$(dirname "$0")/../.."
 fail=0
-# Some results depend on the current branch (`git push origin HEAD`), so every check runs in a scratch
-# repo on a known branch, never in this checkout (CI runs it on main, agents on work branches).
+# The hook under test is always this repo's guard-main.mjs. Some of its rules depend on the current
+# branch (`git push origin HEAD` is blocked only on main), so each check tells the hook to look at a
+# fixture instead of this checkout, whose branch differs between CI (main) and agents (work branches).
+# The fixtures are two empty local git folders in a temp directory, one on main and one on a work
+# branch, deleted on exit. Nothing is cloned, pushed or contacted: the hook only reads the command
+# text, so names like example/repo below are plain strings.
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 for branch in main work/0001-example; do
