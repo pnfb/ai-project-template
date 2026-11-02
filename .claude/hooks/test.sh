@@ -3,13 +3,30 @@
 set -u
 cd "$(dirname "$0")/../.."
 fail=0
+# The hook under test is always this repo's guard-main.mjs. Some of its rules depend on the current
+# branch (`git push origin HEAD` is blocked only on main), so each check tells the hook to look at a
+# fixture instead of this checkout, whose branch differs between CI (main) and agents (work branches).
+# The fixtures are two empty local git folders in a temp directory, one on main and one on a work
+# branch, deleted on exit. Nothing is cloned, pushed or contacted: the hook only reads the command
+# text, so names like example/repo below are plain strings.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+for branch in main work/0001-example; do
+  dir="$tmp/${branch//\//-}"
+  git init -q -b "$branch" "$dir"
+  git -C "$dir" -c user.name=test -c user.email=test@example.com commit -q --allow-empty -m init
+done
+WORK_REPO="$tmp/work-0001-example"
+MAIN_REPO="$tmp/main"
+# check <expected> <command> [repo]: runs the hook as if Claude ran <command> in <repo> (default: on a work branch).
 check() {
-  local expected="$1" cmd="$2"
-  printf '{"tool_input":{"command":%s}}' "$(node -e 'console.log(JSON.stringify(process.argv[1]))' "$cmd")" \
+  local expected="$1" cmd="$2" repo="${3:-$WORK_REPO}"
+  node -e 'console.log(JSON.stringify({ cwd: process.argv[2], tool_input: { command: process.argv[1] } }))' "$cmd" "$repo" \
     | node .claude/hooks/guard-main.mjs >/dev/null 2>&1
   local code=$?
   local got=allow; [ "$code" -eq 2 ] && got=block
-  if [ "$got" = "$expected" ]; then echo "ok    $expected: $cmd"; else echo "FAIL  expected $expected, got $got: $cmd"; fail=1; fi
+  local where="${repo##*/}"
+  if [ "$got" = "$expected" ]; then echo "ok    $expected ($where): $cmd"; else echo "FAIL  expected $expected, got $got ($where): $cmd"; fail=1; fi
 }
 check block "git push origin main"
 check block "git push -u origin main"
@@ -39,6 +56,9 @@ check allow 'git commit -m "docs: never run gh pr merge or git push origin main"
 check allow 'grep -rn "gh pr merge" .claude'
 check allow "gh api repos/example/repo/pulls/3/merge"
 check allow "git push origin HEAD"
+check block "git push origin HEAD" "$MAIN_REPO"
+check block "git push" "$MAIN_REPO"
+check allow "git push"
 check allow "curl -s https://api.github.com/repos/example/repo/pulls/3"
 check allow "git push origin work/0003-example"
 check allow "git push --force-with-lease origin work/0004-example"
